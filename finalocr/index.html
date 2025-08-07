@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisionExtractAI | AI Command Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0D0C14;
+            --surface-color: rgba(23, 22, 32, 0.5);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-primary: #f0f0f5;
+            --text-secondary: #a1a1aa;
+            --accent-color: #9333ea;
+            --accent-hover: #a855f7;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow: hidden; /* Prevent body scroll, main-container will scroll */
+        }
+        
+        /* NEW: Canvas for the hexagonal background */
+        #hexagon-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1; /* Behind the main content */
+        }
+
+        .main-container {
+            position: relative;
+            z-index: 2;
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .page { display: none; }
+        .page.active {
+            display: block;
+            animation: fadeIn 0.7s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .glass-card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover:not(.no-hover) {
+            border-color: var(--accent-color);
+            background-color: rgba(23, 22, 32, 0.7);
+        }
+        
+        .chat-bubble, .contact-card {
+            animation: popIn 0.5s ease-out forwards;
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        @keyframes popIn {
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        .contact-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .contact-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 0 30px rgba(147, 51, 234, 0.25);
+        }
+        
+        .editable-field:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        #chat-widget {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        #chat-widget:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px var(--accent-color);
+        }
+        #chat-panel {
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <canvas id="hexagon-canvas"></canvas>
+
+    <div class="main-container p-6 sm:p-8 lg:p-12">
+
+        <header class="mb-10 flex justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold text-white tracking-tighter">VisionExtractAI</h1>
+                <p id="header-subtitle" class="text-md text-gray-400 mt-1">AI-Powered Document Extraction</p>
+            </div>
+        </header>
+
+        <div id="page-api-key" class="page active">
+            <div class="max-w-2xl mx-auto mt-10 text-center">
+                <h2 class="text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-500">Welcome to VisionExtractAI</h2>
+                <p class="text-lg text-gray-400 mt-4 max-w-xl mx-auto">
+                    Transform static documents into a dynamic, queryable knowledge base. This app uses <strong>Google's Gemini API</strong> to perform state-of-the-art OCR and to power an intelligent chat assistant that understands your content.
+                </p>
+                <div class="mt-8 glass-card p-8 rounded-xl">
+                    <p class="text-gray-300 mb-4">To begin, please enter your Google AI API key below.</p>
+                    <input type="password" id="api-key-input" placeholder="Enter your Google AI API key here" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white text-center focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <button id="continue-with-api-key-btn" class="w-full mt-6 font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex items-center gap-2 justify-center bg-purple-600 hover:bg-purple-700 text-white">Unlock Command Center</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-dashboard" class="page">
+             <div id="upload-section" class="mb-8">
+                <input type="file" id="file-upload" class="hidden" multiple accept="image/*">
+                <label for="file-upload" id="drop-zone" class="glass-card flex flex-col items-center justify-center w-full h-48 p-6 rounded-xl cursor-pointer border-dashed border-2">
+                    <div class="text-center">
+                        <i class="fas fa-cloud-upload-alt text-4xl text-gray-500 mb-3"></i>
+                        <p class="font-semibold">Drag & drop files or <span class="text-purple-400">browse</span></p>
+                        <p class="text-sm text-gray-500 mt-1">Supports PNG, JPG, or WEBP</p>
+                    </div>
+                </label>
+            </div>
+            
+            <div id="live-activity-section" class="mb-8">
+                <h3 class="font-bold text-lg mb-2 flex items-center gap-2 text-gray-400"><i class="fas fa-history"></i> Live Activity</h3>
+                <div id="live-activity-feed" class="space-y-2 text-sm"></div>
+            </div>
+
+            <div id="results-section" class="rounded-xl">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h3 class="font-bold text-lg">Extracted Contacts</h3>
+                    <div class="flex items-center gap-4">
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3"><i class="fas fa-search text-gray-500"></i></span>
+                            <input type="text" id="search-input" placeholder="Search contacts..." class="glass-card no-hover w-full max-w-xs bg-transparent border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        </div>
+                        <div class="relative" id="actions-menu-container">
+                            <button id="actions-menu-btn" class="glass-card font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex items-center gap-2 justify-center">
+                                Actions <i class="fas fa-chevron-down text-xs ml-1"></i>
+                            </button>
+                            <div id="actions-dropdown" class="hidden absolute right-0 mt-2 w-48 glass-card rounded-lg shadow-lg z-10">
+                                <a id="export-pdf-btn" href="#" class="block px-4 py-2 text-sm hover:bg-purple-600 rounded-t-lg">Export to PDF</a>
+                                <a id="export-excel-btn" href="#" class="block px-4 py-2 text-sm hover:bg-purple-600 rounded-b-lg">Export to Excel</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="card-grid-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                </div>
+                <div id="placeholder-row" class="text-center py-24 text-gray-500 hidden">
+                   <i class="fas fa-id-card text-5xl mb-4"></i>
+                   <p class="text-lg">Your extracted contacts will appear here as cards.</p>
+               </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="chat-widget" class="hidden fixed bottom-8 right-8 bg-purple-600 hover:bg-purple-700 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-lg z-40">
+        <i class="fas fa-comments text-2xl"></i>
+    </button>
+
+    <div id="chat-panel" class="fixed bottom-0 right-0 h-full w-full max-w-md glass-card no-hover flex flex-col z-50 transform translate-x-full">
+        <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+            <h3 class="font-bold text-lg flex items-center gap-3"><i class="fas fa-comments text-purple-400"></i> Ask About Your Documents</h3>
+            <button id="chat-close-btn" class="text-gray-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div id="chat-messages" class="flex-1 p-4 space-y-4 overflow-y-auto">
+            <div class="flex justify-start">
+                <div class="chat-bubble bg-gray-700 rounded-lg p-3"><p class="text-sm">Hello! Ask me anything about your documents.</p></div>
+            </div>
+        </div>
+        <div class="p-4 border-t border-gray-700">
+            <div class="relative">
+                <input type="text" id="chat-input" placeholder="Type your question..." class="w-full bg-gray-900 border border-gray-700 rounded-full pl-4 pr-12 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <button id="chat-send-btn" class="absolute inset-y-0 right-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 w-10 h-10 rounded-full m-1.5 transition-colors"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:5000';
+        let userApiKey = null;
+        let contactData = []; 
+        const pages = document.querySelectorAll('.page');
+        const headerSubtitle = document.getElementById('header-subtitle');
+        const fileUpload = document.getElementById('file-upload');
+        const liveActivityFeed = document.getElementById('live-activity-feed');
+        const cardGridContainer = document.getElementById('card-grid-container');
+        const placeholderRow = document.getElementById('placeholder-row');
+        const dropZone = document.getElementById('drop-zone');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        const searchInput = document.getElementById('search-input');
+        const actionsMenuBtn = document.getElementById('actions-menu-btn');
+        const actionsDropdown = document.getElementById('actions-dropdown');
+        const exportPdfBtn = document.getElementById('export-pdf-btn');
+        const exportExcelBtn = document.getElementById('export-excel-btn');
+        const chatWidget = document.getElementById('chat-widget');
+        const chatPanel = document.getElementById('chat-panel');
+        const chatCloseBtn = document.getElementById('chat-close-btn');
+
+        // CORRECTED & IMPROVED Hexagon Canvas Background Logic
+        const canvas = document.getElementById('hexagon-canvas');
+        const ctx = canvas.getContext('2d');
+        let hexagons = [];
+        const hexSize = 25; // Radius of hexagons
+        const hexWidth = Math.sqrt(3) * hexSize;
+        const hexHeight = 2 * hexSize;
+        let mouse = { x: undefined, y: undefined, radius: 150 };
+
+        function initCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            hexagons = [];
+            const cols = Math.ceil(canvas.width / hexWidth) + 1;
+            const rows = Math.ceil(canvas.height / (hexHeight * 0.75)) + 1;
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = col * hexWidth + (row % 2) * (hexWidth / 2);
+                    const y = row * hexHeight * 0.75;
+                    hexagons.push({ x, y, size: hexSize, opacity: 0.05 });
+                }
+            }
+        }
+
+        function drawHexagon(x, y, size, opacity) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i + (Math.PI / 6); // Rotated to have flat top/bottom
+                const pointX = x + size * Math.cos(angle);
+                const pointY = y + size * Math.sin(angle);
+                if (i === 0) ctx.moveTo(pointX, pointY);
+                else ctx.lineTo(pointX, pointY);
+            }
+            ctx.closePath();
+            ctx.fillStyle = `rgba(147, 51, 234, ${opacity})`;
+            ctx.strokeStyle = `rgba(147, 51, 234, ${opacity * 1.5})`;
+            ctx.lineWidth = 1;
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hexagons.forEach(hex => {
+                const dist = Math.hypot(hex.x - mouse.x, hex.y - mouse.y);
+                const maxOpacity = 0.6;
+                const baseOpacity = 0.05;
+                let targetOpacity = baseOpacity;
+
+                if (dist < mouse.radius) {
+                    targetOpacity = Math.max(baseOpacity, (1 - dist / mouse.radius) * maxOpacity);
+                }
+                
+                hex.opacity += (targetOpacity - hex.opacity) * 0.1; // Smooth interpolation
+                
+                drawHexagon(hex.x, hex.y, hex.size, hex.opacity);
+            });
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        window.addEventListener('resize', initCanvas);
+        
+        // End of Canvas Logic
+
+        function toggleChatPanel(show) {
+            if (show) {
+                chatPanel.style.transform = 'translateX(0)';
+                chatWidget.style.transform = 'scale(0)';
+            } else {
+                chatPanel.style.transform = 'translateX(100%)';
+                chatWidget.style.transform = 'scale(1)';
+            }
+        }
+        
+        chatWidget.addEventListener('click', () => toggleChatPanel(true));
+        chatCloseBtn.addEventListener('click', () => toggleChatPanel(false));
+        
+        function renderCards(dataToRender = contactData) {
+            cardGridContainer.innerHTML = ''; 
+            if (dataToRender.length === 0) {
+                placeholderRow.classList.remove('hidden');
+                placeholderRow.querySelector('p').textContent = searchInput.value ? 'No contacts match your search.' : 'Your extracted contacts will appear here as cards.';
+            } else {
+                placeholderRow.classList.add('hidden');
+                dataToRender.forEach((data, index) => addCardToGrid(data, index));
+            }
+        }
+        
+        function addCardToGrid(data, index) {
+            const card = document.createElement('div');
+            card.id = `card-${data.id}`;
+            card.className = 'contact-card glass-card p-4 rounded-xl flex flex-col justify-between h-full';
+            card.style.animationDelay = `${index * 50}ms`;
+            card.innerHTML = `
+                <div class="flex-grow space-y-1">
+                    <p class="font-bold text-lg truncate editable-field" data-field="Company Name">${data['Company Name'] || 'Unknown Company'}</p>
+                    <p class="text-sm text-gray-400 editable-field" data-field="Owner Name">${data['Owner Name'] || 'No Name'}</p>
+                    <div class="mt-3 text-xs space-y-2 text-gray-400">
+                        <p class="truncate editable-field" data-field="Email"><i class="fas fa-envelope fa-fw mr-2"></i>${data['Email'] || 'N/A'}</p>
+                        <p class="truncate editable-field" data-field="Number"><i class="fas fa-phone fa-fw mr-2"></i>${data['Number'] || 'N/A'}</p>
+                        <p class="truncate editable-field" data-field="Address"><i class="fas fa-map-marker-alt fa-fw mr-2"></i>${data['Address'] || 'N/A'}</p>
+                    </div>
+                </div>
+                <div class="flex justify-end items-center gap-2 mt-4 pt-3 border-t border-gray-700/50">
+                    <a href="/uploads/${data.image_filename}" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors px-2" title="View Image"><i class="fas fa-eye"></i></a>
+                    <button class="text-red-500 hover:text-red-400 transition-colors px-2" onclick="deleteCard('${data.id}')" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            `;
+            cardGridContainer.appendChild(card);
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredData = contactData.filter(contact => Object.values(contact).some(value => String(value).toLowerCase().includes(searchTerm)));
+            renderCards(filteredData);
+        });
+
+        actionsMenuBtn.addEventListener('click', () => {
+            actionsDropdown.classList.toggle('hidden');
+        });
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('actions-menu-container').contains(e.target)) {
+                actionsDropdown.classList.add('hidden');
+            }
+        });
+
+        async function loadInitialData() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/load_data`);
+                contactData = await response.json();
+                renderCards();
+            } catch (error) { console.error("Failed to load initial data:", error); }
+        }
+
+        function showPage(pageId) {
+            pages.forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            headerSubtitle.textContent = pageId === 'page-api-key' ? "AI-Powered Document Extraction" : `AI Command Center`;
+            chatWidget.classList.toggle('hidden', pageId !== 'page-dashboard');
+            if (pageId === 'page-dashboard' && contactData.length === 0) {
+                loadInitialData();
+            }
+        }
+        
+        document.getElementById('continue-with-api-key-btn').addEventListener('click', () => {
+            const key = document.getElementById('api-key-input').value.trim();
+            if (!key) return alert('Please enter a valid API key.');
+            userApiKey = key;
+            showPage('page-dashboard');
+        });
+
+        dropZone.addEventListener('dragover', (e) => e.preventDefault());
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); });
+        fileUpload.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            if (!userApiKey) { alert("Please enter an API key."); showPage('page-api-key'); return; }
+            placeholderRow.classList.add('hidden');
+            Array.from(files).forEach(file => processFile(file));
+        }
+
+        async function processFile(file) {
+            const fileId = `file-${Date.now()}-${Math.random()}`;
+            addFileToQueueUI(fileId, file.name);
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('apiKey', userApiKey);
+            try {
+                const response = await fetch(`${API_BASE_URL}/process_card`, { method: 'POST', body: formData });
+                if (!response.ok) throw new Error((await response.json()).error || 'Server error');
+                const newData = await response.json();
+                contactData.unshift(newData);
+                renderCards();
+                updateQueueUI(fileId, 'success', 'Processing complete.');
+            } catch (error) { console.error('Error processing file:', error); updateQueueUI(fileId, 'error', error.message); }
+        }
+        
+        async function deleteCard(cardId) {
+            if (!confirm('Are you sure you want to delete this contact?')) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete_card/${cardId}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+                const deletedContactName = contactData.find(c => c.id === cardId)?.['Company Name'] || 'contact';
+                contactData = contactData.filter(d => d.id !== cardId);
+                renderCards();
+                addFileToQueueUI(`delete-${cardId}`, `Deleted ${deletedContactName}.`, 'success');
+            } catch (error) { alert(`Failed to delete contact: ${error.message}`); }
+        }
+
+        cardGridContainer.addEventListener('click', (e) => {
+            const fieldElement = e.target.closest('.editable-field');
+            if (!fieldElement || fieldElement.querySelector('input')) return;
+            const originalValue = fieldElement.textContent.replace(/^[\s\S]*?\s/, '').trim();
+            const fieldName = fieldElement.dataset.field;
+            fieldElement.innerHTML = `<input type="text" value="${originalValue}" class="w-full bg-gray-800 border border-purple-500 rounded px-2 py-1 text-sm">`;
+            const input = fieldElement.querySelector('input');
+            input.focus();
+            input.select();
+            const save = async () => {
+                const newValue = input.value.trim() || 'N/A';
+                const cardId = fieldElement.closest('.contact-card').id.replace('card-', '');
+                const dataIndex = contactData.findIndex(d => d.id === cardId);
+                if (dataIndex > -1) { contactData[dataIndex][fieldName] = newValue; }
+                fieldElement.innerHTML = fieldElement.innerHTML.includes('fa-fw') ? `<i class="fas ${getIconForField(fieldName)} fa-fw mr-2"></i>${newValue}` : newValue;
+                await saveEditToServer(cardId, fieldName, newValue);
+            };
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') input.blur();
+                if (e.key === 'Escape') { fieldElement.innerHTML = fieldElement.innerHTML.includes('fa-fw') ? `<i class="fas ${getIconForField(fieldName)} fa-fw mr-2"></i>${originalValue}` : originalValue; }
+            });
+        });
+
+        function getIconForField(fieldName) {
+            switch(fieldName) {
+                case "Email": return "fa-envelope";
+                case "Number": return "fa-phone";
+                case "Address": return "fa-map-marker-alt";
+                default: return "";
+            }
+        }
+
+        async function saveEditToServer(cardId, field, value) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/update_card/${cardId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ field: field, value: value })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+                addFileToQueueUI(Date.now(), `Saved changes to ${field}.`, 'success');
+            } catch (error) {
+                alert(`Failed to save changes: ${error.message}`);
+                renderCards();
+            }
+        }
+
+        function addFileToQueueUI(id, name, status = 'processing') {
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = 'glass-card p-2 rounded-lg flex items-center justify-between text-sm opacity-0 transform -translate-y-2 transition-all duration-300';
+            el.innerHTML = `<span class="truncate"></span><div class="status-icon ml-2"></div>`;
+            liveActivityFeed.prepend(el);
+            setTimeout(() => { el.classList.remove('opacity-0', '-translate-y-2'); }, 10);
+            updateQueueUI(id, status, name);
+        }
+
+        function updateQueueUI(id, status, message = '') {
+            const el = document.getElementById(id);
+            if (!el) return;
+            let iconHtml = '', textHtml = '';
+            switch (status) {
+                case 'processing': iconHtml = '<i class="fas fa-spinner animate-spin"></i>'; textHtml = `Processing ${message}...`; break;
+                case 'success': iconHtml = '<i class="fas fa-check-circle text-green-500"></i>'; textHtml = message; setTimeout(() => el.classList.add('opacity-0'), 3000); setTimeout(() => el.remove(), 3500); break;
+                case 'error': iconHtml = `<i class="fas fa-exclamation-circle text-red-500" title="${message}"></i>`; textHtml = `Error: ${message}`; el.querySelector('span').classList.add('line-through'); break;
+            }
+            el.querySelector('span').innerHTML = textHtml;
+            el.querySelector('.status-icon').innerHTML = iconHtml;
+        }
+        
+        exportPdfBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (contactData.length === 0) return addFileToQueueUI(Date.now(), "No contacts to export.", 'error');
+            const { jsPDF } = window.jspdf; const doc = new jsPDF(); const tableColumn = ["Company Name", "Owner Name", "Email", "Number", "Address"]; const tableRows = contactData.map(contact => tableColumn.map(field => contact[field] || "N/A")); doc.text("Extracted Contacts", 14, 15); doc.autoTable({ head: [tableColumn], body: tableRows, startY: 20 }); doc.save("contacts.pdf"); addFileToQueueUI(Date.now(), "Exported to PDF.", 'success');
+        });
+        exportExcelBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (contactData.length === 0) return addFileToQueueUI(Date.now(), "No contacts to export.", 'error');
+            const headers = ["Company Name", "Owner Name", "Email", "Number", "Address"]; const csvRows = contactData.map(row => headers.map(fieldName => { const value = (row[fieldName] || 'N/A').toString(); return value.includes(',') ? `"${value}"` : value; }).join(',')); const csvContent = [headers.join(','), ...csvRows].join('\n'); const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob); link.setAttribute('href', url); link.setAttribute('download', 'contacts.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link); addFileToQueueUI(Date.now(), "Exported to Excel (CSV).", 'success');
+        });
+
+        function addChatMessage(message, type) {
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble rounded-lg p-3 ${type === 'user' ? 'bg-purple-600 self-end' : 'bg-gray-700 self-start'}`;
+            bubble.innerHTML = `<p class="text-sm">${message}</p>`;
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = `flex w-full ${type === 'user' ? 'justify-end' : 'justify-start'}`;
+            messageWrapper.appendChild(bubble);
+            chatMessages.appendChild(messageWrapper);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function handleChatSubmit() {
+            const query = chatInput.value.trim();
+            if (!query) return;
+            addChatMessage(query, 'user');
+            chatInput.value = '';
+            chatSendBtn.disabled = true;
+            const typingIndicator = document.createElement('div');
+            typingIndicator.id = 'typing-indicator';
+            typingIndicator.className = 'flex justify-start';
+            typingIndicator.innerHTML = `<div class="chat-bubble bg-gray-700 rounded-lg p-3"><p class="text-sm italic">AI is thinking...</p></div>`;
+            chatMessages.appendChild(typingIndicator);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            try {
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query, apiKey: userApiKey })
+                });
+                typingIndicator.remove();
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'A network error occurred.');
+                }
+                const data = await response.json();
+                addChatMessage(data.answer, 'ai');
+            } catch (error) {
+                typingIndicator.remove();
+                addChatMessage(`Error: ${error.message}`, 'ai');
+            } finally {
+                chatSendBtn.disabled = false;
+            }
+        }
+
+        chatSendBtn.addEventListener('click', handleChatSubmit);
+        chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleChatSubmit(); } });
+        
+        // Start the canvas animation when the script loads
+        initCanvas();
+        animate();
+
+        showPage('page-api-key');
+    </script>
+</body>
+</html>
