@@ -18,7 +18,7 @@ CORS(app)
 
 # --- Supabase Configuration ---
 # IMPORTANT: Replace these with your actual Supabase URL and Public Key
-SUPABASE_URL = "Yhttps://nwcyfrvkfozlzwjimhmb.supabase.co"
+SUPABASE_URL = "https://nwcyfrvkfozlzwjimhmb.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53Y3lmcnZrZm96bHp3amltaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwODE0NDAsImV4cCI6MjA3MDY1NzQ0MH0.51FFi8Tk51weqnUTC5fvKLldBWcNP_eYAzJzo6sDt88"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
