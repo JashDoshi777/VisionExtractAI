@@ -1,6 +1,6 @@
 import os
 os.environ['FAISS_NO_AVX2'] = '1'  # Critical for Render compatibility
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Reduce TensorFlow logs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # Reduce TensorFlow logs
 import resource
 resource.setrlimit(resource.RLIMIT_AS, (400 * 1024 * 1024, 400 * 1024 * 1024))  # 350MB limit
 
@@ -265,5 +265,6 @@ def process_brochure_endpoint():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+
 
 
