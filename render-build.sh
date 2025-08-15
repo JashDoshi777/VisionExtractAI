@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e  # Exit on error
 
-# Fix dependency conflicts
+# 1. System dependencies for Pillow
+sudo apt-get update && sudo apt-get install -y \
+    libjpeg-dev \
+    zlib1g-dev
+
+# 2. Install Python packages
 pip install --upgrade pip setuptools wheel
-
-# Install critical packages first
-pip install pillow==9.5.0 --no-cache-dir
-pip install faiss-cpu==1.7.4 --no-cache-dir
-
-# Install remaining requirements
+pip install pillow==10.3.0 --no-cache-dir  # Install first!
 pip install -r requirements.txt --no-cache-dir
