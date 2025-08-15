@@ -1,6 +1,6 @@
 import os
 os.environ['FAISS_NO_AVX2'] = '1'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 import resource
 resource.setrlimit(resource.RLIMIT_AS, (400 * 1024 * 1024, 400 * 1024 * 1024))
 
@@ -237,5 +237,6 @@ def query_knowledge_base(user_api_key, query_text, mode, history=[]):
     except Exception as e:
         print(f"❌ RAG Core: Error during Gemini API call for chat: {e}")
         return f"An error occurred while trying to generate an answer: {e}"
+
 
 
