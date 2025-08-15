@@ -1,10 +1,10 @@
 --prefer-binary
-flask==3.0.2  # Updated for Python 3.13
-pillow==10.3.0  # Must use this version for Py3.13
-pymupdf==1.24.1  # Python 3.13 compatible
+flask==3.0.2  # Python 3.13 compatible
+pillow==10.3.0  # REQUIRED for Py3.13
+pymupdf==1.24.1  # Py3.13 support
 google-generativeai==0.3.2
-sentence-transformers==2.7.0  # Updated version
-faiss-cpu==1.8.0  # Python 3.13 support
+sentence-transformers==2.7.0  # Updated for Py3.13
+faiss-cpu==1.8.0  # Must use this version
 supabase==2.7.1
 gunicorn==21.2.0
 httpx[http2]==0.27.0
