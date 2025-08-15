@@ -1,10 +1,10 @@
 --prefer-binary
-flask==3.0.2
-pillow==10.2.0  # Last known working version with Py3.13
-pymupdf==1.24.1
+flask==2.0.3
+pillow==9.5.0  # Must be 9.5.0 for Python 3.10
+pymupdf==1.23.5
 google-generativeai==0.3.2
-sentence-transformers==2.7.0
-faiss-cpu==1.8.0  # Must use this version
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
 supabase==2.7.1
-gunicorn==21.2.0
-httpx[http2]==0.27.0
+gunicorn==20.1.0
+httpx[http2]==0.23.0s
