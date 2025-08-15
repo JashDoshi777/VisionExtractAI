@@ -1,12 +1,10 @@
 #!/bin/bash
-set -e  # Exit on error
+set -e
 
-# 1. Install system deps for Pillow
-sudo apt-get update && sudo apt-get install -y \
-    libjpeg-dev \
-    zlib1g-dev
+# Force binary installs
+export PIP_ONLY_BINARY=:all:
 
-# 2. Install Python packages
+# Install in safe order
 pip install --upgrade pip setuptools wheel
-pip install pillow==10.3.0 --no-cache-dir  # Install first!
+pip install pillow==10.2.0 --no-cache-dir --only-binary=:all:
 pip install -r requirements.txt --no-cache-dir
