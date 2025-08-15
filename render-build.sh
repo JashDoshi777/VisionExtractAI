@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e  # Exit on error
 
-# 1. System dependencies for Pillow
+# 1. Install system deps for Pillow
 sudo apt-get update && sudo apt-get install -y \
     libjpeg-dev \
     zlib1g-dev
