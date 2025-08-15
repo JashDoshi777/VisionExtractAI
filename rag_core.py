@@ -1,22 +1,40 @@
 import os
-import faiss
-import numpy as np
-import json
+os.environ['FAISS_NO_AVX2'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import resource
-from sentence_transformers import SentenceTransformer
-import hashlib
-import google.generativeai as genai
-from supabase import create_client, Client
-import io as python_io
+resource.setrlimit(resource.RLIMIT_AS, (350 * 1024 * 1024, 350 * 1024 * 1024))
 
-# Set memory limits
-resource.setrlimit(resource.RLIMIT_AS, (450 * 1024 * 1024, 450 * 1024 * 1024))
+# Lazy-loaded components
+_loaded = False
+np = None
+faiss = None
+SentenceTransformer = None
+genai = None
+create_client = None
 
-# Supabase Configuration
-SUPABASE_URL = "https://nwcyfrvkfozlzwjimhmb.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53Y3lmcnZrZm96bHp3amltaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwODE0NDAsImV4cCI6MjA3MDY1NzQ0MH0.51FFi8Tk51weqnUTC5fvKLldBWcNP_eYAzJzo6sDt88"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+def _load_dependencies():
+    global _loaded, np, faiss, SentenceTransformer, genai, create_client
+    if not _loaded:
+        import numpy as np
+        import faiss
+        from sentence_transformers import SentenceTransformer
+        import google.generativeai as genai
+        from supabase import create_client
+        _loaded = True
 
+class SupabaseClient:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            _load_dependencies()
+            cls._instance = create_client(
+                "https://nwcyfrvkfozlzwjimhmb.supabase.co",
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53Y3lmcnZrZm96bHp3amltaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwODE0NDAsImV4cCI6MjA3MDY1NzQ0MH0.51FFi8Tk51weqnUTC5fvKLldBWcNP_eYAzJzo6sDt88"
+            )
+        return cls._instance
+
+# Core RAG components
 embedding_model = None
 faiss_indexes = {}
 vector_id_to_text_map = {}
@@ -34,9 +52,12 @@ def cleanup_memory():
 
 def initialize_rag_system():
     global embedding_model
-    print("🧠 RAG Core: Initializing with lightweight model...")
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-    print("✅ RAG Core: Lightweight embedding model loaded.")
+    _load_dependencies()
+    try:
+        embedding_model = SentenceTransformer('paraphrase-MiniLM-L3-v2', device='cpu')
+    except Exception as e:
+        print(f"⚠️ Using fallback model: {e}")
+        embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
     cleanup_memory()
 
 def _get_user_specific_filenames(user_api_key, mode):
@@ -216,3 +237,4 @@ def query_knowledge_base(user_api_key, query_text, mode, history=[]):
     except Exception as e:
         print(f"❌ RAG Core: Error during Gemini API call for chat: {e}")
         return f"An error occurred while trying to generate an answer: {e}"
+
