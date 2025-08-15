@@ -1,78 +1,73 @@
-# rag_core.py
-
 import os
 import faiss
 import numpy as np
 import json
+import resource
 from sentence_transformers import SentenceTransformer
 import hashlib
 import google.generativeai as genai
-# NEW: Import the Supabase client library
 from supabase import create_client, Client
 import io as python_io
 
-# --- Supabase Configuration ---
-# IMPORTANT: Replace these with your actual Supabase URL and Public Key
+# Set memory limits
+resource.setrlimit(resource.RLIMIT_AS, (450 * 1024 * 1024, 450 * 1024 * 1024))
+
+# Supabase Configuration
 SUPABASE_URL = "https://nwcyfrvkfozlzwjimhmb.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53Y3lmcnZrZm96bHp3amltaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwODE0NDAsImV4cCI6MjA3MDY1NzQ0MH0.51FFi8Tk51weqnUTC5fvKLldBWcNP_eYAzJzo6sDt88"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
 embedding_model = None
 faiss_indexes = {}
 vector_id_to_text_map = {}
-# The local VECTOR_STORE_PATH is no longer needed as we use Supabase
 EMBEDDING_DIM = 384
 
+def cleanup_memory():
+    import gc
+    gc.collect()
+    global faiss_indexes, vector_id_to_text_map
+    for mode in list(faiss_indexes.keys()):
+        if len(faiss_indexes[mode]) > 3:  # Keep only 3 most recent users
+            oldest_key = next(iter(faiss_indexes[mode]))
+            del faiss_indexes[mode][oldest_key]
+            del vector_id_to_text_map[mode][oldest_key]
 
 def initialize_rag_system():
-    """
-    Loads the embedding model into memory.
-    """
     global embedding_model
-    print("🧠 RAG Core: Initializing...")
-    print("🧠 RAG Core: Loading embedding model (this may take a moment on first run)...")
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-    print("✅ RAG Core: Embedding model loaded successfully.")
-
+    print("🧠 RAG Core: Initializing with lightweight model...")
+    embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+    print("✅ RAG Core: Lightweight embedding model loaded.")
+    cleanup_memory()
 
 def _get_user_specific_filenames(user_api_key, mode):
-    """
-    Creates unique, safe filenames for a user based on a hash of their API key.
-    """
     user_hash = hashlib.sha256(user_api_key.encode()).hexdigest()[:16]
     index_filename = f'{user_hash}_{mode}_index.faiss'
     map_filename = f'{user_hash}_{mode}_map.json'
     return index_filename, map_filename
 
-
 def _load_user_data(user_api_key, mode):
-    """
-    Loads a user's FAISS index and text map from Supabase Storage into memory.
-    """
+    cleanup_memory()
+    
     if mode not in faiss_indexes:
         faiss_indexes[mode] = {}
     if mode not in vector_id_to_text_map:
         vector_id_to_text_map[mode] = {}
 
-    if user_api_key in faiss_indexes[mode]: # Already loaded for this session
+    if user_api_key in faiss_indexes[mode]:
         return
         
     index_filename, map_filename = _get_user_specific_filenames(user_api_key, mode)
 
-    # Load FAISS index from Supabase
     try:
         print(f"🧠 RAG Core: Downloading FAISS index '{index_filename}' from Supabase...")
         index_bytes = supabase.storage.from_("vector_store").download(index_filename)
-        # FAISS needs to read from a file-like object, so we use an in-memory buffer
         index_buffer = python_io.BytesIO(index_bytes)
         faiss_indexes[mode][user_api_key] = faiss.read_index(faiss.PyCallbackIOReader(index_buffer.read))
         print("✅ RAG Core: FAISS index loaded.")
     except Exception as e:
-        print(f"ℹ️ RAG Core: No index file found for '{index_filename}'. Creating a new one. Error: {e}")
+        print(f"ℹ️ RAG Core: No index file found for '{index_filename}'. Creating new. Error: {e}")
         faiss_indexes[mode][user_api_key] = faiss.IndexFlatL2(EMBEDDING_DIM)
 
-    # Load text map from Supabase
     try:
         print(f"🧠 RAG Core: Downloading map file '{map_filename}' from Supabase...")
         map_bytes = supabase.storage.from_("vector_store").download(map_filename)
@@ -80,24 +75,19 @@ def _load_user_data(user_api_key, mode):
         vector_id_to_text_map[mode][user_api_key] = {int(k): v for k, v in map_data.items()}
         print("✅ RAG Core: Map file loaded.")
     except Exception as e:
-        print(f"ℹ️ RAG Core: No map file found for '{map_filename}'. Creating a new one. Error: {e}")
+        print(f"ℹ️ RAG Core: No map file found for '{map_filename}'. Creating new. Error: {e}")
         vector_id_to_text_map[mode][user_api_key] = {}
 
-
 def _save_user_data(user_api_key, mode):
-    """
-    Saves a user's FAISS index and text map from memory to Supabase Storage.
-    """
+    cleanup_memory()
+    
     index_filename, map_filename = _get_user_specific_filenames(user_api_key, mode)
     
-    # Save FAISS index to Supabase
     if mode in faiss_indexes and user_api_key in faiss_indexes[mode]:
         try:
-            # Write the index to an in-memory buffer
             buffer = python_io.BytesIO()
             faiss.write_index(faiss_indexes[mode][user_api_key], faiss.PyCallbackIOWriter(buffer.write))
             buffer.seek(0)
-            # Upload the buffer's content to Supabase
             supabase.storage.from_("vector_store").upload(
                 file=buffer.getvalue(),
                 path=index_filename,
@@ -107,7 +97,6 @@ def _save_user_data(user_api_key, mode):
         except Exception as e:
             print(f"❌ RAG Core: Failed to save FAISS index to Supabase. Error: {e}")
 
-    # Save text map to Supabase
     if mode in vector_id_to_text_map and user_api_key in vector_id_to_text_map[mode]:
         try:
             map_bytes = json.dumps(vector_id_to_text_map[mode][user_api_key], indent=4).encode('utf-8')
@@ -120,8 +109,7 @@ def _save_user_data(user_api_key, mode):
         except Exception as e:
             print(f"❌ RAG Core: Failed to save map file to Supabase. Error: {e}")
 
-
-def _chunk_text(text, chunk_size=350, chunk_overlap=50):
+def _chunk_text(text, chunk_size=200, chunk_overlap=30):  # Reduced chunk size
     if not isinstance(text, str): return []
     chunks = []
     start = 0
@@ -131,8 +119,8 @@ def _chunk_text(text, chunk_size=350, chunk_overlap=50):
         start += chunk_size - chunk_overlap
     return chunks
 
-
 def add_document_to_knowledge_base(user_api_key, document_text, document_id, mode):
+    cleanup_memory()
     _load_user_data(user_api_key, mode)
     print(f"🧠 RAG Core: Adding/Updating document '{document_id}' in '{mode}' knowledge base...")
     chunks = _chunk_text(document_text)
@@ -155,6 +143,7 @@ def add_document_to_knowledge_base(user_api_key, document_text, document_id, mod
     _save_user_data(user_api_key, mode)
     
 def remove_document_from_knowledge_base(user_api_key, document_id, mode):
+    cleanup_memory()
     _load_user_data(user_api_key, mode)
     index = faiss_indexes.get(mode, {}).get(user_api_key)
     text_map = vector_id_to_text_map.get(mode, {}).get(user_api_key)
@@ -180,8 +169,8 @@ def remove_document_from_knowledge_base(user_api_key, document_id, mode):
     print(f"✅ RAG Core: Removed {len(ids_to_remove)} vectors for document '{document_id}'.")
     _save_user_data(user_api_key, mode)
 
-
 def query_knowledge_base(user_api_key, query_text, mode, history=[]):
+    cleanup_memory()
     _load_user_data(user_api_key, mode)
     index = faiss_indexes.get(mode, {}).get(user_api_key)
     text_map = vector_id_to_text_map.get(mode, {}).get(user_api_key)
@@ -191,7 +180,7 @@ def query_knowledge_base(user_api_key, query_text, mode, history=[]):
 
     print(f"🧠 RAG Core: Received query for '{mode}' mode: '{query_text}'")
     query_embedding = embedding_model.encode([query_text])
-    k = min(5, index.ntotal)
+    k = min(3, index.ntotal)  # Reduced from 5 to 3
     distances, indices = index.search(np.array(query_embedding, dtype=np.float32), k)
     retrieved_chunks = [text_map[i]["text"] for i in indices[0] if i in text_map]
     if not retrieved_chunks:
@@ -202,18 +191,16 @@ def query_knowledge_base(user_api_key, query_text, mode, history=[]):
 
     try:
         genai.configure(api_key=user_api_key)
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash',
+                                    generation_config={
+                                        "max_output_tokens": 1000,
+                                        "temperature": 0
+                                    })
         
         chat = model.start_chat(history=history)
         
         prompt = f"""
-        You are an expert analyst. Your task is to provide a detailed and proper answer to the user's question based ONLY on the provided text snippets and the previous conversation turns.
-
-        Follow these steps:
-        1.  First, consider the ongoing conversation history to understand the full context of the user's latest question.
-        2.  Carefully read the new context snippets provided below.
-        3.  Think step-by-step about how the snippets and the conversation history can be combined to answer the latest question.
-        4.  Formulate a comprehensive answer. If the information is not in the context or history, you must explicitly state that the information is not available in the documents.
+        You are an expert analyst. Your task is to provide a detailed answer based ONLY on the provided text snippets.
 
         CONTEXT SNIPPETS:
         {context}
@@ -224,7 +211,7 @@ def query_knowledge_base(user_api_key, query_text, mode, history=[]):
         FINAL ANSWER:
         """
         response = chat.send_message(prompt)
-        print("✅ RAG Core: Generated final answer with Gemini, considering history.")
+        print("✅ RAG Core: Generated final answer with Gemini.")
         return response.text
     except Exception as e:
         print(f"❌ RAG Core: Error during Gemini API call for chat: {e}")
