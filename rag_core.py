@@ -1,8 +1,7 @@
 import os
 os.environ['FAISS_NO_AVX2'] = '1'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import resource
-resource.setrlimit(resource.RLIMIT_AS, (350 * 1024 * 1024, 350 * 1024 * 1024))
+resource.setrlimit(resource.RLIMIT_AS, (300 * 1024 * 1024, 300 * 1024 * 1024))
 
 # Lazy-loaded components
 _loaded = False
@@ -237,6 +236,7 @@ def query_knowledge_base(user_api_key, query_text, mode, history=[]):
     except Exception as e:
         print(f"❌ RAG Core: Error during Gemini API call for chat: {e}")
         return f"An error occurred while trying to generate an answer: {e}"
+
 
 
 
