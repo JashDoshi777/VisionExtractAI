@@ -1,27 +1,40 @@
 import os
+os.environ['FAISS_NO_AVX2'] = '1'  # Critical for Render compatibility
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Reduce TensorFlow logs
+import resource
+resource.setrlimit(resource.RLIMIT_AS, (350 * 1024 * 1024, 350 * 1024 * 1024))  # 350MB limit
+
 import io
 import json
 import hashlib
-import resource
-import google.generativeai as genai
 from flask import Flask, request, jsonify, send_from_directory, redirect
 from flask_cors import CORS
 from PIL import Image
 import fitz  # PyMuPDF
-import rag_core
-from supabase import create_client, Client
-
-# Set memory limits (450MB to leave room for overhead)
-resource.setrlimit(resource.RLIMIT_AS, (450 * 1024 * 1024, 450 * 1024 * 1024))
 
 app = Flask(__name__)
 CORS(app)
 
-# Supabase Configuration
+# Initialize RAG system (lazy-loaded)
+def get_rag_core():
+    from rag_core import initialize_rag_system
+    initialize_rag_system()
+    import rag_core
+    return rag_core
+
+# --- Supabase Configuration ---
 SUPABASE_URL = "https://nwcyfrvkfozlzwjimhmb.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53Y3lmcnZrZm96bHp3amltaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwODE0NDAsImV4cCI6MjA3MDY1NzQ0MH0.51FFi8Tk51weqnUTC5fvKLldBWcNP_eYAzJzo6sDt88"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = None  # Will be initialized on first use
 
+def get_supabase():
+    global supabase
+    if supabase is None:
+        from supabase import create_client
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return supabase
+
+# --- Helper Functions ---
 def _get_user_data_filename(user_api_key, mode):
     user_hash = hashlib.sha256(user_api_key.encode()).hexdigest()[:16]
     return f'{user_hash}_{mode}_data.json'
@@ -29,62 +42,48 @@ def _get_user_data_filename(user_api_key, mode):
 def _load_user_data(user_api_key, mode):
     filename = _get_user_data_filename(user_api_key, mode)
     try:
-        response = supabase.storage.from_("user_data").download(filename)
-        data = json.loads(response.decode('utf-8'))
-        return data
+        response = get_supabase().storage.from_("user_data").download(filename)
+        return json.loads(response.decode('utf-8'))
     except Exception as e:
-        print(f"ℹ️ Could not load data for {filename}. Error: {e}")
+        print(f"ℹ️ Could not load data: {e}")
         return []
 
 def _save_user_data(user_api_key, mode, data):
     filename = _get_user_data_filename(user_api_key, mode)
     try:
-        data_bytes = json.dumps(data, indent=4).encode('utf-8')
-        supabase.storage.from_("user_data").upload(
-            file=data_bytes,
+        get_supabase().storage.from_("user_data").upload(
+            file=json.dumps(data).encode('utf-8'),
             path=filename,
             file_options={"content-type": "application/json", "upsert": "true"}
         )
         return True
     except Exception as e:
-        print(f"❌ Could not save data to Supabase for {filename}! Error: {e}")
+        print(f"❌ Failed to save data: {e}")
         return False
 
+# --- Business Card Processing ---
 def extract_card_data(image_bytes, user_api_key):
-    print("🤖 Processing business card with Gemini Vision API...")
-    if not user_api_key: return {"error": "A valid Google AI API Key was not provided."}
-    
-    try:
-        genai.configure(api_key=user_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash',
-                                    generation_config={
-                                        "max_output_tokens": 1000,
-                                        "temperature": 0
-                                    })
-    except Exception as e:
-        return {"error": f"Invalid API Key or configuration error: {e}"}
+    print("🤖 Processing business card...")
+    if not user_api_key: 
+        return {"error": "API Key required"}
 
     try:
+        import google.generativeai as genai
+        genai.configure(api_key=user_api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash',
+                                   generation_config={
+                                       "max_output_tokens": 1000,
+                                       "temperature": 0
+                                   })
         img = Image.open(io.BytesIO(image_bytes))
-        prompt = """
-        You are an expert at reading business cards. Analyze the image and extract information into a structured JSON format.
-        The JSON object must use these exact keys: "Owner Name", "Company Name", "Email", "Number", "Address".
-        If a piece of information is not present, its value must be `null`.
-        Your entire response MUST be a single, valid JSON object.
-        """
-        response = model.generate_content([prompt, img])
-        json_text = response.text.strip().replace('```json', '').replace('```', '')
-        parsed_info = json.loads(json_text)
-        return {
-            "Owner Name": parsed_info.get("Owner Name"),
-            "Company Name": parsed_info.get("Company Name"),
-            "Email": parsed_info.get("Email"),
-            "Number": parsed_info.get("Number"),
-            "Address": parsed_info.get("Address"),
-        }
+        response = model.generate_content([
+            "Extract business card details as JSON with keys: Owner Name, Company Name, Email, Number, Address",
+            img
+        ])
+        return json.loads(response.text.replace('```json', '').replace('```', ''))
     except Exception as e:
-        print(f"❌ Error during Gemini API call for business card: {e}")
-        return {"error": f"Failed to parse AI response: {e}"}
+        print(f"❌ Card processing failed: {e}")
+        return {"error": str(e)}
 
 def extract_brochure_contacts_and_company(image_list, user_api_key):
     print("🤖 Brochure Step 1: Extracting contacts and company...")
@@ -265,6 +264,5 @@ def process_brochure_endpoint():
 # Including: /chat, /load_data, /update_card, /delete_card, etc.
 
 if __name__ == "__main__":
-    rag_core.initialize_rag_system()
-    print("--- Server is starting! ---")
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+
