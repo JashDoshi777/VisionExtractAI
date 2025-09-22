@@ -1,0 +1,11 @@
+google-generativeai
+flask
+flask-cors
+Pillow
+PyMuPDF
+faiss-cpu
+numpy
+sentence-transformers
+scikit-learn
+nltk
+gunicorn
