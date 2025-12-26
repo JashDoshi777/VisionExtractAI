@@ -674,14 +674,16 @@ def serve_dashboard():
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-if __name__ == "__main__":
-    rag_core.initialize_rag_system()
-    
-    # This creates all the new tables based on your models if they don't exist yet.
-    with app.app_context():
-        db.create_all()
-        print("Database tables (business_card, brochure, contact) checked and created if necessary.")
+# Initialize RAG system (needed for both local and gunicorn deployment)
+rag_core.initialize_rag_system()
 
+# Create database tables (needed for both local and gunicorn deployment)
+with app.app_context():
+    db.create_all()
+    print("Database tables (business_card, brochure, contact) checked and created if necessary.")
+
+if __name__ == "__main__":
+    # Local development only
     print("--- Server is starting! ---")
     print(f"User-specific data will be saved in '{os.path.abspath(DATA_FOLDER)}'")
     print("To use the dashboard, open your web browser and go to: http://127.0.0.1:5000")
