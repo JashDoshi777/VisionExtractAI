@@ -55,6 +55,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # --- MODIFIED: Initialize the app with the database object ---
 db.init_app(app)
 
+# --- HARDCODED API KEY (loaded from environment) ---
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
 
 # --- DATABASE MODEL DEFINITIONS HAVE BEEN MOVED TO models.py ---
 
@@ -314,8 +317,9 @@ def make_session_permanent():
 @app.route('/process_card', methods=['POST'])
 def process_card_endpoint():
     if 'file' not in request.files: return jsonify({'error': 'No file part'}), 400
-    file, user_api_key, selected_model_key = request.files['file'], request.form.get('apiKey'), request.form.get('selectedModel')
-    if not user_api_key or not selected_model_key: return jsonify({'error': 'API Key and Model are required'}), 400
+    file, selected_model_key = request.files['file'], request.form.get('selectedModel')
+    user_api_key = OPENROUTER_API_KEY  # Use hardcoded server-side API key
+    if not user_api_key or not selected_model_key: return jsonify({'error': 'Server API key not configured or model not selected'}), 400
     if selected_model_key not in MODEL_MAP: return jsonify({'error': 'Invalid model selected'}), 400
     
     try:
@@ -369,8 +373,9 @@ def process_card_endpoint():
 @app.route('/process_brochure', methods=['POST'])
 def process_brochure_endpoint():
     if 'file' not in request.files: return jsonify({'error': 'No file part'}), 400
-    file, user_api_key, selected_model_key = request.files['file'], request.form.get('apiKey'), request.form.get('selectedModel')
-    if not user_api_key or not selected_model_key: return jsonify({'error': 'API Key and Model are required'}), 400
+    file, selected_model_key = request.files['file'], request.form.get('selectedModel')
+    user_api_key = OPENROUTER_API_KEY  # Use hardcoded server-side API key
+    if not user_api_key or not selected_model_key: return jsonify({'error': 'Server API key not configured or model not selected'}), 400
     if selected_model_key not in MODEL_MAP: return jsonify({'error': 'Invalid model selected'}), 400
 
     try:
@@ -475,8 +480,9 @@ def process_brochure_endpoint():
 @app.route('/chat', methods=['POST'])
 def chat_endpoint():
     data = request.get_json()
-    user_api_key, query_text, mode, selected_model_key = data.get('apiKey'), data.get('query'), data.get('mode'), data.get('selectedModel')
-    if not all([user_api_key, query_text, mode, selected_model_key]): return jsonify({'error': 'API key, query, mode, and model are required.'}), 400
+    query_text, mode, selected_model_key = data.get('query'), data.get('mode'), data.get('selectedModel')
+    user_api_key = OPENROUTER_API_KEY  # Use hardcoded server-side API key
+    if not all([user_api_key, query_text, mode, selected_model_key]): return jsonify({'error': 'Query, mode, and model are required.'}), 400
     if selected_model_key not in MODEL_MAP: return jsonify({'error': 'Invalid model selected'}), 400
     try:
         session['api_key'] = user_api_key
@@ -502,16 +508,17 @@ def chat_endpoint():
 
 @app.route('/load_data/<mode>', methods=['POST'])
 def load_data_endpoint(mode):
-    user_api_key = request.json.get('apiKey')
-    if not user_api_key: return jsonify({'error': 'API Key is required'}), 400
+    user_api_key = OPENROUTER_API_KEY  # Use hardcoded server-side API key
+    if not user_api_key: return jsonify({'error': 'Server API key not configured'}), 400
     user_data = _load_user_data(user_api_key, mode)
     return jsonify(user_data)
 
 @app.route('/update_card/<mode>/<item_id>', methods=['POST'])
 def update_card_endpoint(mode, item_id):
     data = request.get_json()
-    user_api_key, field, value, contact_id = data.get('apiKey'), data.get('field'), data.get('value'), data.get('contactId')
-    if not user_api_key: return jsonify({'error': 'API Key is required'}), 400
+    field, value, contact_id = data.get('field'), data.get('value'), data.get('contactId')
+    user_api_key = OPENROUTER_API_KEY  # Use hardcoded server-side API key
+    if not user_api_key: return jsonify({'error': 'Server API key not configured'}), 400
     
     # Step 1: Update JSON file (Existing Logic, Unchanged)
     user_data = _load_user_data(user_api_key, mode)
@@ -587,8 +594,9 @@ def update_card_endpoint(mode, item_id):
 @app.route('/delete_card/<mode>/<item_id>', methods=['DELETE'])
 def delete_card_endpoint(mode, item_id):
     data = request.get_json()
-    user_api_key, contact_id = data.get('apiKey'), data.get('contactId')
-    if not user_api_key: return jsonify({'error': 'API Key is required'}), 400
+    contact_id = data.get('contactId')
+    user_api_key = OPENROUTER_API_KEY  # Use hardcoded server-side API key
+    if not user_api_key: return jsonify({'error': 'Server API key not configured'}), 400
 
     # Step 1: Delete from JSON file (Existing Logic, Unchanged)
     user_data = _load_user_data(user_api_key, mode)

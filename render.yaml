@@ -11,5 +11,7 @@ services:
         sync: false
       - key: CHROMA_API_KEY
         sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
