@@ -26,4 +26,19 @@ nltk.download('stopwords', download_dir=DOWNLOAD_DIR)
 nltk.download('punkt_tab', download_dir=DOWNLOAD_DIR)
 
 print("\n✅ All necessary NLTK packages have been downloaded successfully.")
-print("You can now run your main application.")
+
+# Pre-download sentence-transformer models for faster startup
+# These are cached by the library and will be reused at runtime
+print("\nPre-downloading ML models for faster startup (this may take a few minutes)...")
+try:
+    from sentence_transformers import SentenceTransformer, CrossEncoder
+    print("  - Downloading SentenceTransformer model...")
+    SentenceTransformer('all-mpnet-base-v2')
+    print("  - Downloading CrossEncoder model...")
+    CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+    print("✅ ML models cached successfully!")
+except Exception as e:
+    print(f"⚠️ Warning: Could not pre-download ML models: {e}")
+    print("   Models will be downloaded on first request.")
+
+print("\nYou can now run your main application.")

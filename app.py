@@ -674,16 +674,34 @@ def serve_dashboard():
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-# Initialize RAG system (needed for both local and gunicorn deployment)
-rag_core.initialize_rag_system()
+# Health check endpoint - responds immediately without waiting for model loading
+@app.route('/health')
+def health_check():
+    return jsonify({"status": "ok", "message": "Service is running"}), 200
 
-# Create database tables (needed for both local and gunicorn deployment)
+# Create database tables (lightweight - runs at import time)
 with app.app_context():
     db.create_all()
     print("Database tables (business_card, brochure, contact) checked and created if necessary.")
 
+# Lazy initialization for RAG system (deferred until first request)
+_rag_initialized = False
+
+@app.before_request
+def ensure_rag_initialized():
+    global _rag_initialized
+    # Skip initialization for health checks and static files
+    if request.endpoint in ('health_check', 'uploaded_file', 'static'):
+        return
+    if not _rag_initialized:
+        print("First request received - initializing RAG system...")
+        rag_core.initialize_rag_system()
+        _rag_initialized = True
+        print("RAG system initialized successfully!")
+
 if __name__ == "__main__":
-    # Local development only
+    # Local development - initialize immediately for better dev experience
+    rag_core.initialize_rag_system()
     print("--- Server is starting! ---")
     print(f"User-specific data will be saved in '{os.path.abspath(DATA_FOLDER)}'")
     print("To use the dashboard, open your web browser and go to: http://127.0.0.1:5000")
