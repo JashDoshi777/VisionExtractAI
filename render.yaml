@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: visionextract-crm
+    runtime: python
+    buildCommand: pip install -r requirements.txt && python download_nltk.py
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: CHROMA_TENANT
+        sync: false
+      - key: CHROMA_DATABASE
+        sync: false
+      - key: CHROMA_API_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
